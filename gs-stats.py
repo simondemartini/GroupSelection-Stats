@@ -1,6 +1,8 @@
 from multiprocessing.pool import Pool
 
 import matplotlib
+import sys
+
 matplotlib.use('GTK3Agg')
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -52,14 +54,16 @@ def csv_worker(run):
 def summarize_runs(runs):
     merged_runs = {}
     for name in get_run_names(runs):
-        successful = list(filter(lambda r: r.run_name == name and r.is_success(), runs))
+
+        successful = get_successful_runs(runs, name)
+
         if len(successful) > 0:
             merged = pd.concat(map(lambda r: r.df, successful))
             summarized = merged.groupby('tick').mean()
             summarized.popCount = summarized.popCount.round()
 
             summarized["sharePercentStdUpper"] \
-                = summarized.apply(lambda row: row['sharePercentAvg'] + row['sharePercentSD'],axis='columns')
+                = summarized.apply(lambda row: row['sharePercentAvg'] + row['sharePercentSD'], axis='columns')
             summarized["sharePercentStdLower"] \
                 = summarized.apply(lambda row: row['sharePercentAvg'] - row['sharePercentSD'], axis='columns')
 
@@ -77,9 +81,17 @@ def get_run_names(runs):
     return sorted(list(set(map(lambda x: x.run_name, runs))))
 
 
+def get_successful_runs(runs, name):
+    successful = list(filter(lambda r: r.run_name == name and r.is_success(), runs))
+    # if max_runs is not None:
+    #    successful = successful[:max_runs]
+
+    return successful
+
+
 def graph_pops(runs_dict, title):
     ax = None
-    for name, df in runs_dict.items():
+    for name, df in sorted(runs_dict.items()):
         # print(df)
         if ax is None and df is not None:
             ax = df.plot(y="popCount", label=name, title=title)
@@ -92,7 +104,7 @@ def graph_sp(runs_dict, title):
     ax = None
 
     x = 0
-    for name, df in runs_dict.items():
+    for name, df in sorted(runs_dict.items()):
         # print(df)
         if df is not None:
             df2 = df[["sharePercentMin", "sharePercentMax", "sharePercentStdLower", 'sharePercentStdUpper', 'sharePercentAvg']]
@@ -106,7 +118,7 @@ def graph_sp(runs_dict, title):
 
 def graph_sp_by_pop(runs_dict, title):
     ax = None
-    for name, df in runs_dict.items():
+    for name, df in sorted(runs_dict.items()):
         # print(df)
         if df is not None:
             df2 = df.groupby('popCount').mean()
@@ -117,27 +129,34 @@ def graph_sp_by_pop(runs_dict, title):
                 df2.plot(y="sharePercentAvg", label=name, ax=ax)
 
 
-def filter_runs(runs, keys):
-    return {key: runs[key] for key in runs.keys() if key in keys}
+def filter_runs(runs, names):
+    return {key: runs[key] for key in runs.keys() if key in names}
 
 
 def success_rates(runs):
     cols = ["run_name", "count", "successes", "success_rate"]
     vals = []
     for name in get_run_names(runs):
-        run_count = 0
-        run_success = 0
-
-        for run in filter(lambda r: r.run_name == name, runs):
-            run_count += 1
-            if run.is_success():
-                run_success += 1
-
+        run_count = len(list(filter(lambda r: r.run_name == name, runs)))
+        run_success = len(get_successful_runs(runs, name))
         run_success_rate = run_success / run_count
+
         vals.append([name, run_count, run_success, run_success_rate])
 
     df = pd.DataFrame(vals, columns=cols)
     return df
+
+
+def verify_params(runs):
+    # Check to ensure that named runs all have the same params
+    for name in get_run_names(runs):
+        prev = None
+        for run in list(filter(lambda r: r.run_name == name and r.is_success(), runs)):
+            if prev is None:
+                prev = run.params
+            elif prev != run.params:
+                print("ERROR MISMATCHED PARAMS: {}".format(run))
+                sys.exit()
 
 
 def graph_success(df, title):
@@ -147,6 +166,7 @@ def graph_success(df, title):
 
 def main():
     data_dir = "/home/simon/Dropbox/School/TCSS 499/Data/test-group4/stats"
+
     GSRun.data_dir = data_dir
 
     # Read data from files
@@ -162,6 +182,7 @@ def main():
     all_runs = pool.map(csv_worker, all_files)
     pool.close()
     print("{} Runs".format(len(all_runs)))
+    verify_params(all_runs)  # make sure we don't have any mixed names/params
 
     # Calculate Success Rates
     success_df = success_rates(all_runs)
@@ -177,31 +198,32 @@ def main():
     pg_runs.append("default")
 
     # Show Success & Counts
-    graph_success(success_df, "Success Rates of Runs")
+    pg_success = success_df[success_df['run_name'].isin(pg_runs)]
+    graph_success(pg_success, "Success Rates of Runs")  # only show pg
 
     # Compare Public Goods
     graph_pops(filter_runs(summarized_dict, pg_runs), "Mean Population of Public Goods Factors")
     graph_sp_by_pop(filter_runs(summarized_dict, pg_runs), "Mean Population vs Share Percent of Public Goods Factors")
 
     # Compare Uniform vs Normal Forage
-    graph_pops(filter_runs(summarized_dict, ["default", "normalForage"]), "Mean Population of Foraging Methods")
+    # graph_pops(filter_runs(summarized_dict, ["default", "normalForage"]), "Mean Population of Foraging Methods")
     graph_sp_by_pop(filter_runs(summarized_dict,  ["default", "normalForage"]), "Mean Population vs Share Percent of Foraging Methods")
-    graph_sp(filter_runs(summarized_dict,  ["normalForage"]), "Share Percent of Normal Foraging")
-    graph_sp(filter_runs(summarized_dict,  ["default"]), "Share Percent of Uniform Foraging")
+    # graph_sp(filter_runs(summarized_dict,  ["normalForage"]), "Share Percent of Normal Foraging")
+    # graph_sp(filter_runs(summarized_dict,  ["default"]), "Share Percent of Uniform Foraging")
 
     # Compare Breed/Share
     sb_runs = ["sb8", "sb16", "sb32", "default"]
     graph_pops(filter_runs(summarized_dict, sb_runs), "Mean Population of Max Breed/Share")
-    graph_sp_by_pop(filter_runs(summarized_dict, sb_runs), "Mean Population vs Share Percent of Max Breed/Share")
+    # graph_sp_by_pop(filter_runs(summarized_dict, sb_runs), "Mean Population vs Share Percent of Max Breed/Share")
 
     # Compare Step
     step_runs = ["step4", "step8", "step16", "default"]
     graph_pops(filter_runs(summarized_dict, step_runs), "Mean Population of Mutation Steps")
-    graph_sp_by_pop(filter_runs(summarized_dict, step_runs), "Mean Population vs Share Percent of Mutation Steps")
+    # graph_sp_by_pop(filter_runs(summarized_dict, step_runs), "Mean Population vs Share Percent of Mutation Steps")
 
     # Combined Runs
-    graph_sp(filter_runs(summarized_dict, {"default"}), "Mean Share Percent of Default Runs")
-    graph_sp_by_pop(filter_runs(summarized_dict, {"default"}), "Mean Population vs Mean Share Percent of Default Runs")
+    # graph_sp(filter_runs(summarized_dict, {"default"}), "Mean Share Percent of Default Runs")
+    # graph_sp_by_pop(filter_runs(summarized_dict, {"default"}), "Mean Population vs Mean Share Percent of Default Runs")
 
     # Individual Runs
 
