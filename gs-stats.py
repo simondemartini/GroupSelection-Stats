@@ -160,8 +160,7 @@ def verify_params(runs):
 
 
 def graph_success(df, title):
-    df2 = df.sort_values('success_rate')
-    df2.plot.bar(x='run_name', y='success_rate', title=title, color="Orange")
+    df.plot.bar(x='run_name', y='success_rate', title=title, color="Orange")
 
 
 def main():
@@ -195,37 +194,49 @@ def main():
     pg_runs = []
     for x in range(10):
         pg_runs.append("pg1{}".format(x))
-    pg_runs.append("default")
 
     # Show Success & Counts
     pg_success = success_df[success_df['run_name'].isin(pg_runs)]
+    pg_success = pg_success.append(success_df[success_df['run_name'].isin(["default"])])  # Add defaults at end
     graph_success(pg_success, "Success Rates of Runs")  # only show pg
 
+    plt.tight_layout()
+    plt.savefig('graphs/successes.pdf', format='pdf')
+
     # Compare Public Goods
+    pg_runs.append("default")
     graph_pops(filter_runs(summarized_dict, pg_runs), "Mean Population of Public Goods Factors")
+    plt.tight_layout()
+    plt.savefig('graphs/pg-pop.pdf', format='pdf')
     graph_sp_by_pop(filter_runs(summarized_dict, pg_runs), "Mean Population vs Share Percent of Public Goods Factors")
+    plt.tight_layout()
+    plt.savefig('graphs/pg-popsp.pdf', format='pdf')
 
     # Compare Uniform vs Normal Forage
     # graph_pops(filter_runs(summarized_dict, ["default", "normalForage"]), "Mean Population of Foraging Methods")
     graph_sp_by_pop(filter_runs(summarized_dict,  ["default", "normalForage"]), "Mean Population vs Share Percent of Foraging Methods")
+    plt.tight_layout()
+    plt.savefig('graphs/foraging.pdf', format='pdf')
     # graph_sp(filter_runs(summarized_dict,  ["normalForage"]), "Share Percent of Normal Foraging")
     # graph_sp(filter_runs(summarized_dict,  ["default"]), "Share Percent of Uniform Foraging")
 
     # Compare Breed/Share
     sb_runs = ["sb8", "sb16", "sb32", "default"]
     graph_pops(filter_runs(summarized_dict, sb_runs), "Mean Population of Max Breed/Share")
+    plt.tight_layout()
+    plt.savefig('graphs/sb.pdf', format='pdf')
     # graph_sp_by_pop(filter_runs(summarized_dict, sb_runs), "Mean Population vs Share Percent of Max Breed/Share")
 
     # Compare Step
     step_runs = ["step4", "step8", "step16", "default"]
     graph_pops(filter_runs(summarized_dict, step_runs), "Mean Population of Mutation Steps")
+    plt.tight_layout()
+    plt.savefig('graphs/step.pdf', format='pdf')
     # graph_sp_by_pop(filter_runs(summarized_dict, step_runs), "Mean Population vs Share Percent of Mutation Steps")
 
     # Combined Runs
     # graph_sp(filter_runs(summarized_dict, {"default"}), "Mean Share Percent of Default Runs")
     # graph_sp_by_pop(filter_runs(summarized_dict, {"default"}), "Mean Population vs Mean Share Percent of Default Runs")
-
-    # Individual Runs
 
     plt.show()
 
